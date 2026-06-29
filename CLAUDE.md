@@ -62,12 +62,29 @@ today** where `Return_Value < -VaR`. Column names mirror the VaR columns with
 count for a well-calibrated 99% VaR ≈ 2.5 (1% of 252). Note the counts overlap
 day-to-day, so they're a smoothed tally, not independent observations.
 
+## Known wrinkles (quantile discreteness)
+- **Two different interpolation conventions.** The equal-weight methods
+  (`historical`, and the `expected_shortfall` threshold) use `np.quantile`'s
+  default linear/**R-7** estimator (virtual index `p·(n−1)`). The weighted
+  methods (`brw`, `brw_es`) use `weighted_quantile`, whose `cumsum(w) − 0.5·w`
+  plotting position reduces to the **Hazen (type-5)** position `(k+0.5)/n` when
+  weights are equal. So `historical` and `brw` do **not** numerically agree in
+  the equal-weight limit (they differ by ~½ a rank). This is a deliberate,
+  un-fixed inconsistency — left as-is on purpose; do not "harmonize" it without
+  asking.
+- **ES integrates to exact mass.** Both ES methods (`expected_shortfall`,
+  `brw_es`) go through `weighted_expected_shortfall`, which averages exactly the
+  worst `tail_probability` of weight mass with a fractional boundary observation
+  — so there is no whole-observation discreteness on the ES side. (This was a
+  prior wrinkle, now resolved.)
+
 ## How to extend
 - **Add a VaR method:** add a branch in `_window_var`, then one `results[...] =
   rolling_var(...)` line in `main()` and append the column name to `var_columns`
   (so it also gets an exceedance count).
-- **Add a weighted tail statistic:** reuse `weighted_quantile`; it underpins both
-  `brw` and `brw_es`.
+- **Add a weighted tail statistic:** reuse `weighted_quantile` (underpins `brw`)
+  or `weighted_expected_shortfall` (underpins `expected_shortfall` and `brw_es`,
+  with equal weights vs half-life weights respectively).
 
 ## Running
 ```bash

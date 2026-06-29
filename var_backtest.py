@@ -58,6 +58,24 @@ def weighted_quantile(values: np.ndarray, weights: np.ndarray, probability: floa
     return float(np.interp(probability, cumulative_weight, sorted_values))
 
 
+def weighted_expected_shortfall(
+    values: np.ndarray, weights: np.ndarray, tail_probability: float
+) -> float:
+    """Mean of the worst ``tail_probability`` of weight mass (positive loss).
+
+    Sorts values ascending, then averages exactly the worst ``tail_probability``
+    of the total weight mass, fractionally including the single boundary
+    observation so the averaged mass is exactly ``tail_probability``. With equal
+    weights this is the expected shortfall at the ``1 - tail_probability`` level.
+    """
+    order = np.argsort(values)
+    sorted_values = values[order]
+    mass = weights[order] / np.sum(weights)
+    mass_before = np.cumsum(mass) - mass                       # mass strictly worse than each obs
+    take = np.clip(tail_probability - mass_before, 0.0, mass)  # each obs's mass inside the tail
+    return float(-np.sum(take * sorted_values) / tail_probability)
+
+
 def half_life_weights(window_length: int, half_life_days: float) -> np.ndarray:
     """Exponentially decaying weights, heaviest on the most recent observation.
 
@@ -131,9 +149,8 @@ def _window_var(
         return -np.quantile(window, tail_probability)
 
     if method == "expected_shortfall":
-        threshold = np.quantile(window, tail_probability)
-        tail_losses = window[window <= threshold]
-        return -tail_losses.mean()
+        equal_weights = np.ones(len(window))
+        return weighted_expected_shortfall(window, equal_weights, tail_probability)
 
     if method == "ewma":
         # One-year half-life weighted std dev, matching the pandas ewm(halflife=)
@@ -153,14 +170,10 @@ def _window_var(
     if method == "brw_es":
         # Expected-shortfall analogue of the BRW method: the half-life weighted
         # average of the worst tail of returns (by weight mass). Pass 0.9745 so
-        # the worst 2.55% are averaged, which equals the 99% VaR under
-        # normality. The weighted threshold reuses the same weighted-quantile
-        # logic as the BRW method; the tail below it is then averaged using the
-        # observations' exponential weights.
+        # the worst 2.55% of mass are averaged, which equals the 99% VaR under
+        # normality. Integrates to exactly the tail mass (fractional boundary).
         weights = half_life_weights(len(window), half_life_days)
-        threshold = weighted_quantile(window, weights, tail_probability)
-        in_tail = window <= threshold
-        return -np.average(window[in_tail], weights=weights[in_tail])
+        return weighted_expected_shortfall(window, weights, tail_probability)
 
     raise ValueError(f"Unknown method: {method!r}")
 
