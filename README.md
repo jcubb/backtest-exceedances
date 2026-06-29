@@ -1,7 +1,7 @@
 # backtest-exceedances
 
 Rolling 99% daily Value at Risk (VaR) on a simulated return series, estimated
-five different ways, with trailing-year exceedance counts to compare how well
+six different ways, with trailing-year exceedance counts to compare how well
 each method is calibrated.
 
 ## What it does
@@ -10,7 +10,7 @@ each method is calibrated.
    iid Normal with mean zero and a 1% daily standard deviation — and writes them
    to `returns.xlsx` (one sheet, columns `Return_Date` and `Return_Value`).
 
-2. **`var_backtest.py`** reads that file and adds, for every day, five rolling
+2. **`var_backtest.py`** reads that file and adds, for every day, six rolling
    estimates of 99% VaR plus a trailing-year exceedance count for each. Results
    are written to `var_backtest_results.csv`.
 
@@ -28,12 +28,13 @@ and can serve as an out-of-sample test.
 | `var_es_3y` | Mean of the worst 2.55% of returns (97.45% expected shortfall = 99% normal VaR) | 3 years |
 | `var_ewma_5y` | One-year half-life weighted std dev × 99% normal z-score | 5 years |
 | `var_brw_5y` | Boudoukh-Richardson-Whitelaw weighted-quantile: worst-1% return with one-year half-life observation weights | 5 years |
+| `var_brw_es_5y` | Expected-shortfall form of BRW: half-life weighted average of the worst 2.55% of returns (the weighted analogue of `var_es_3y`) | 5 years |
 
 ## Exceedance counts
 
 | Column | Meaning |
 | --- | --- |
-| `exc_param_3y`, `exc_hist_3y`, `exc_es_3y`, `exc_ewma_5y`, `exc_brw_5y` | Number of days in the trailing 1 year (252 trading days, **inclusive of the current day**) whose realised return fell below `-VaR`. For a well-calibrated 99% VaR the expected count is ~2.5 (1% of 252). |
+| `exc_param_3y`, `exc_hist_3y`, `exc_es_3y`, `exc_ewma_5y`, `exc_brw_5y`, `exc_brw_es_5y` | Number of days in the trailing 1 year (252 trading days, **inclusive of the current day**) whose realised return fell below `-VaR`. For a well-calibrated 99% VaR the expected count is ~2.5 (1% of 252). |
 
 ## Design notes
 
@@ -42,8 +43,8 @@ and can serve as an out-of-sample test.
   call site.
 - The half-life weighting uses the same `0.5 ** (age / half_life)` convention as
   pandas' `ewm(halflife=)`.
-- The two core functions are `rolling_var()` (dispatches the five methods) and
-  `weighted_quantile()` (the weighted-quantile helper behind the BRW method).
+- The two core functions are `rolling_var()` (dispatches the six methods) and
+  `weighted_quantile()` (the weighted-quantile helper behind both BRW methods).
 
 ## Running it
 
