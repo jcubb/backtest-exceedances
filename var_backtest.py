@@ -83,7 +83,7 @@ def rolling_var(
         Daily return series indexed by date.
     method : str
         One of "parametric", "historical", "expected_shortfall", "ewma",
-        "brw".
+        "brw", "brw_es".
     years : int
         Length of the trailing window, in years (converted to trading days).
     half_life_years : float
@@ -132,6 +132,17 @@ def _window_var(window: np.ndarray, method: str, half_life_days: float) -> float
         weights = half_life_weights(len(window), half_life_days)
         return -weighted_quantile(window, weights, 1 - CONFIDENCE)
 
+    if method == "brw_es":
+        # Expected-shortfall analogue of the BRW method: the half-life weighted
+        # average of the worst 2.55% of returns (by weight mass), which equals
+        # the 99% VaR under normality. The 2.55% weighted threshold reuses the
+        # same weighted-quantile logic as the BRW method; the tail below it is
+        # then averaged using the observations' exponential weights.
+        weights = half_life_weights(len(window), half_life_days)
+        threshold = weighted_quantile(window, weights, ES_TAIL_PROBABILITY)
+        in_tail = window <= threshold
+        return -np.average(window[in_tail], weights=weights[in_tail])
+
     raise ValueError(f"Unknown method: {method!r}")
 
 
@@ -169,8 +180,11 @@ def main() -> None:
     results["var_es_3y"] = rolling_var(returns, "expected_shortfall", years=3)
     results["var_ewma_5y"] = rolling_var(returns, "ewma", years=5, half_life_years=1.0)
     results["var_brw_5y"] = rolling_var(returns, "brw", years=5, half_life_years=1.0)
+    results["var_brw_es_5y"] = rolling_var(returns, "brw_es", years=5, half_life_years=1.0)
 
-    var_columns = ["var_param_3y", "var_hist_3y", "var_es_3y", "var_ewma_5y", "var_brw_5y"]
+    var_columns = [
+        "var_param_3y", "var_hist_3y", "var_es_3y", "var_ewma_5y", "var_brw_5y", "var_brw_es_5y",
+    ]
     for column in var_columns:
         counts = rolling_exceedance_count(returns, results[column])
         results[counts.name] = counts
