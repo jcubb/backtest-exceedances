@@ -1,0 +1,15 @@
+# Generated data and results (reproducible via the scripts)
+returns.xlsx
+var_backtest_results.csv
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/

@@ -1,0 +1,17 @@
+backtest-exceedances
+create a spreadsheet with one sheet and two columns of data labeled "Return_Date" and "Return_Value". Generate 10 years of fake daily weekday returns with mean zero and daily standard deviation of 1%.
+
+Read that data into a pandas dataframe. then create a number of new estimated values of 99% Value at Risk (VaR) using different methodologies to add to that dataframe:
+(1) trailing 3-year standard deviation, scaled by z score for 99% on normal distribution
+(2) threshold of worst 1% of historical returns over trailing 3 years
+(3) average of worst 2.55% of historical returns over trailing 3 years (because the 97.45% conditional value at risk, or expected shortfall, for a normal distribution is equivalent to the 99% VaR of a normal distribution)
+(4) one-year half-life standard deviation using 5 years of historical data, scaled by z score for 99% on normal distribution
+(5) 99% VaR of worst 1% of historical returns over the last 5 years, but weighted with a one-year half-life
+
+Number (5) is the trickiest, so ask for clarification of what I mean
+
+Accomplish this by writing one or two functions that can calculate those metrics. Make it easy to do things like change the trailing amount of history used from, say, 3 years to 4 years.
+
+Give variables and parameters intuitive names to make the code readable, and follow the standard Python conventions for names of variables and functions that a good linter would like.
+
+Make a plan and let's discuss \preflight
