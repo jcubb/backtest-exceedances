@@ -30,19 +30,26 @@ estimation methods, not a production risk system.
 - **Half-life weighting:** `0.5 ** (age / half_life_days)`, half_life_days =
   `half_life_years * 252`. This matches pandas `ewm(halflife=)` and the
   `equity_risklib.risk_model` convention used elsewhere in the user's code.
-- **99% z-score:** `Z_SCORE_99 = norm.ppf(0.99)` (~2.3263), not hard-coded.
+- **Confidence level:** passed per call as `var_percentile` (one argument
+  threaded `rolling_var` → `_window_var`); there are no `CONFIDENCE`/`Z_SCORE_99`/
+  `ES_TAIL_PROBABILITY` globals. Quantile methods use `1 - var_percentile`;
+  parametric methods scale by `norm.ppf(var_percentile)`, computed in-method.
 - **ES trick:** the 97.45% expected shortfall of a normal equals its 99% VaR, so
-  ES-style methods average the worst `ES_TAIL_PROBABILITY = 0.0255` of returns.
+  the ES methods are called with `var_percentile = 0.9745` (→ worst 2.55% tail).
+  The plain VaR methods are called with `0.99`.
 
 ## The six VaR methods (`_window_var`)
 | method key | column | idea |
 | --- | --- | --- |
-| `parametric` | `var_param_3y` | std × z99 |
+| `parametric` | `var_param_3y` | std × z (`norm.ppf(var_percentile)`) |
 | `historical` | `var_hist_3y` | empirical 1% quantile |
 | `expected_shortfall` | `var_es_3y` | mean of worst 2.55% |
-| `ewma` | `var_ewma_5y` | half-life weighted std × z99 (windowed `ewm`) |
-| `brw` | `var_brw_5y` | half-life weighted 1% quantile (BRW) |
-| `brw_es` | `var_brw_es_5y` | half-life weighted mean of worst 2.55% (ES form of BRW) |
+| `ewma` | `var_ewma_3y` | half-life weighted std × z (windowed `ewm`) |
+| `brw` | `var_brw_3y` | half-life weighted 1% quantile (BRW) |
+| `brw_es` | `var_brw_es_3y` | half-life weighted mean of worst 2.55% (ES form of BRW) |
+
+The example `main()` runs all six on a **3-year** window. Column names encode the
+window (`_3y`); if you change `years`, rename the columns to match.
 
 Naming note: column abbreviations differ from method keys (`parametric`→`param`,
 `historical`→`hist`, `expected_shortfall`→`es`). "BRW" = Boudoukh-Richardson-
