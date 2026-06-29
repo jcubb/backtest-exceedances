@@ -1,0 +1,13 @@
+# Normalize line endings: store text files with LF in the repo, let Git
+# convert to the native ending on checkout.
+* text=auto
+
+# Explicit handling for common text types
+*.py    text
+*.md    text
+*.txt   text
+*.csv   text
+*.gitignore text
+
+# Binary files Git should never touch
+*.xlsx  binary
