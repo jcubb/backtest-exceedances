@@ -39,21 +39,24 @@ estimation methods, not a production risk system.
   The plain VaR methods are called with `0.99`.
 
 ## The six VaR methods (`_window_var`)
-| method key | column | idea |
+| method key (dispatch) | display name | idea |
 | --- | --- | --- |
-| `parametric` | `var_param_3y` | std × z (`norm.ppf(var_percentile)`) |
-| `historical` | `var_hist_3y` | empirical 1% quantile |
-| `expected_shortfall` | `var_es_3y` | mean of worst 2.55% |
-| `ewma` | `var_ewma_3y` | half-life weighted std × z (windowed `ewm`) |
-| `brw` | `var_brw_3y` | half-life weighted 1% quantile (BRW) |
-| `brw_es` | `var_brw_es_3y` | half-life weighted mean of worst 2.55% (ES form of BRW) |
+| `parametric` | `SD-Scaled` | std × z (`norm.ppf(var_percentile)`) |
+| `historical` | `Historical` | empirical worst-tail quantile |
+| `expected_shortfall` | `ES-Equiv-Historical` | mean of worst-tail (ES) |
+| `ewma` | `EW-SD-Scaled` | half-life weighted std × z (windowed `ewm`) |
+| `brw` | `EW-Historical` | half-life weighted worst-tail quantile (BRW) |
+| `brw_es` | `EW-ES-Equiv-Historical` | half-life weighted mean of worst-tail (BRW-ES) |
 
-The example `main()` runs all six on a **3-year** window. Column names encode the
-window (`_3y`); if you change `years`, rename the columns to match.
+`main()` holds a `metrics` list of `(display name, method key, var_percentile)`
+and builds columns as **`var_<name>_<years>y_<pct>`** — e.g.
+`var_ES-Equiv-Historical_3y_97.45`. The display names carry no underscores, so
+`report.html` can split on `_` into name / window / threshold. The internal
+`_window_var` dispatch keys (`parametric`, `historical`, …) are unchanged; only
+the column-name labels and report display changed (renamed 2026-06-30).
 
-Naming note: column abbreviations differ from method keys (`parametric`→`param`,
-`historical`→`hist`, `expected_shortfall`→`es`). "BRW" = Boudoukh-Richardson-
-Whitelaw (not "bsw").
+The example `main()` runs all six on a **3-year** window at 0.99 (VaR methods) or
+0.9745 (ES methods). Changing `years` flows into the column names automatically.
 
 ## Exceedance counts (`rolling_exceedance_count`)
 For each VaR column, the count of days in the trailing 252 days **inclusive of

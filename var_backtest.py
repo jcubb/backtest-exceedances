@@ -1,19 +1,19 @@
-"""Compute several rolling estimates of 99% daily Value at Risk (VaR).
+"""Compute several rolling estimates of daily Value at Risk (VaR).
 
 Reads the simulated returns produced by generate_data.py, then adds six rolling
 VaR estimates, each built with a different methodology (all on a 3yr window in
-the example ``main``):
+the example ``main``). Result columns are named
+``var_<name>_<years>y_<percentile>`` (e.g. ``var_ES-Equiv-Historical_3y_97.45``):
 
-    (1) var_param_3y   - trailing std dev, scaled by the normal z-score
-    (2) var_hist_3y    - empirical worst 1% return
-    (3) var_es_3y      - mean of the worst 2.55% of returns
-                         (97.45% expected shortfall == 99% VaR under normality)
-    (4) var_ewma_3y    - one-year half-life std dev, scaled by the normal z-score
-    (5) var_brw_3y     - Boudoukh-Richardson-Whitelaw weighted-quantile: the
-                         worst-1% empirical return, observations weighted with a
-                         one-year half-life
-    (6) var_brw_es_3y  - expected-shortfall form of BRW: half-life weighted mean
-                         of the worst 2.55% of returns
+    (1) SD-Scaled               - trailing std dev, scaled by the normal z-score
+    (2) Historical              - empirical worst-tail return
+    (3) ES-Equiv-Historical     - mean of the worst-tail returns, at the
+                                  shortfall level that equals the normal VaR
+    (4) EW-SD-Scaled            - half-life weighted std dev, scaled by the z-score
+    (5) EW-Historical           - half-life weighted worst-tail return
+                                  (Boudoukh-Richardson-Whitelaw weighted-quantile)
+    (6) EW-ES-Equiv-Historical  - half-life weighted mean of the worst-tail
+                                  returns (weighted expected shortfall)
 
 The confidence level is supplied per call via ``var_percentile``: pass 0.99 for
 the plain VaR methods (1, 2, 4, 5) and 0.9745 for the expected-shortfall methods
@@ -206,19 +206,28 @@ def main() -> None:
     returns = pd.read_excel(INPUT_FILE, sheet_name="Returns")
     returns = returns.set_index("Return_Date")["Return_Value"]
 
-    # Pass 0.99 for the plain VaR methods and 0.9745 for the expected-shortfall
-    # methods (so they average the worst 2.55%, == 99% VaR under normality).
-    results = returns.to_frame()
-    results["var_param_3y"] = rolling_var(returns, "parametric", 0.99, years=3)
-    results["var_hist_3y"] = rolling_var(returns, "historical", 0.99, years=3)
-    results["var_es_3y"] = rolling_var(returns, "expected_shortfall", 0.9745, years=3)
-    results["var_ewma_3y"] = rolling_var(returns, "ewma", 0.99, years=3, half_life_years=1.0)
-    results["var_brw_3y"] = rolling_var(returns, "brw", 0.99, years=3, half_life_years=1.0)
-    results["var_brw_es_3y"] = rolling_var(returns, "brw_es", 0.9745, years=3, half_life_years=1.0)
-
-    var_columns = [
-        "var_param_3y", "var_hist_3y", "var_es_3y", "var_ewma_3y", "var_brw_3y", "var_brw_es_3y",
+    years = 3
+    # (display name, method key, VaR percentile). The percentile is 0.99 for the
+    # plain VaR methods and 0.9745 for the expected-shortfall methods (their
+    # 97.45% shortfall equals the 99% VaR under normality).
+    metrics = [
+        ("SD-Scaled", "parametric", 0.99),
+        ("Historical", "historical", 0.99),
+        ("ES-Equiv-Historical", "expected_shortfall", 0.9745),
+        ("EW-SD-Scaled", "ewma", 0.99),
+        ("EW-Historical", "brw", 0.99),
+        ("EW-ES-Equiv-Historical", "brw_es", 0.9745),
     ]
+
+    results = returns.to_frame()
+    var_columns = []
+    for name, method, percentile in metrics:
+        # Column encodes name, window, and percentile so the report can show the
+        # threshold, e.g. var_ES-Equiv-Historical_3y_97.45
+        column = f"var_{name}_{years}y_{round(percentile * 100, 6):g}"
+        results[column] = rolling_var(returns, method, percentile, years=years)
+        var_columns.append(column)
+
     for column in var_columns:
         counts = rolling_exceedance_count(returns, results[column])
         results[counts.name] = counts

@@ -21,26 +21,30 @@ loss). Each estimate is a **beginning-of-day** figure: the trailing window for
 day *t* ends on day *t-1*, so a day's return is never used in its own estimate
 and can serve as an out-of-sample test.
 
-| Column | Method | Window |
+Result columns are named `var_<name>_<window>_<percentile>` (e.g.
+`var_ES-Equiv-Historical_3y_97.45`), so each series carries its own window and
+VaR threshold.
+
+| Name | Method | Window |
 | --- | --- | --- |
-| `var_param_3y` | Trailing standard deviation × 99% normal z-score | 3 years |
-| `var_hist_3y` | Empirical worst-1% historical return | 3 years |
-| `var_es_3y` | Mean of the worst 2.55% of returns (97.45% expected shortfall = 99% normal VaR) | 3 years |
-| `var_ewma_3y` | One-year half-life weighted std dev × 99% normal z-score | 3 years |
-| `var_brw_3y` | Boudoukh-Richardson-Whitelaw weighted-quantile: worst-1% return with one-year half-life observation weights | 3 years |
-| `var_brw_es_3y` | Expected-shortfall form of BRW: half-life weighted average of the worst 2.55% of returns (the weighted analogue of `var_es_3y`) | 3 years |
+| `SD-Scaled` | Equal-weight standard deviation, scaled to VaR with the Normal z-score | 3 years |
+| `Historical` | Empirical worst-tail return over the window | 3 years |
+| `ES-Equiv-Historical` | Mean of the worst-tail returns, at the shortfall level that equals the Normal VaR | 3 years |
+| `EW-SD-Scaled` | Exponentially weighted standard deviation, scaled to VaR with the Normal z-score | 3 years |
+| `EW-Historical` | Exponentially weighted empirical worst-tail return (Boudoukh-Richardson-Whitelaw weighted-quantile) | 3 years |
+| `EW-ES-Equiv-Historical` | Exponentially weighted mean of the worst-tail returns (weighted expected shortfall) | 3 years |
 
 The confidence level is supplied per call via `rolling_var(..., var_percentile=...)`:
 pass `0.99` for the plain VaR methods and `0.9745` for the expected-shortfall
 methods (whose 97.45% tail mean equals the 99% normal VaR). Quantile methods use
-a tail probability of `1 - var_percentile`; the parametric methods scale by
+a tail probability of `1 - var_percentile`; the std-dev methods scale by
 `norm.ppf(var_percentile)`.
 
 ## Exceedance counts
 
 | Column | Meaning |
 | --- | --- |
-| `exc_param_3y`, `exc_hist_3y`, `exc_es_3y`, `exc_ewma_3y`, `exc_brw_3y`, `exc_brw_es_3y` | Number of days in the trailing 1 year (252 trading days, **inclusive of the current day**) whose realised return fell below `-VaR`. For a well-calibrated 99% VaR the expected count is ~2.5 (1% of 252). |
+| One `exc_<name>_<window>_<percentile>` per VaR column | Number of days in the trailing 1 year (252 trading days, **inclusive of the current day**) whose realised return fell below `-VaR`. For a well-calibrated 99% VaR the expected count is ~2.5 (1% of 252). |
 
 ## Design notes
 
@@ -67,8 +71,9 @@ Requires `pandas`, `numpy`, `scipy`, and `openpyxl`.
 Open it in any browser, then load (or drag in) a `var_backtest_results.csv`. It
 detects which metrics are present, lets you toggle any subset on/off, and draws
 two charts: the rolling VaR estimates and the trailing-year exceedance counts.
-A `hist_3y` series, if present, is drawn as a dotted line (the current
-methodology); every other metric gets a solid line in a distinct color. Hovering
+A `Historical` series, if present, is drawn as a dotted line (the current
+methodology); every other metric gets a solid line in a distinct color. Each
+series name shows its window and VaR threshold, e.g. `(3y, 97.45)`. Hovering
 shows the values for every selected metric on that date.
 
 To embed the report **inside a Jupyter notebook**, open `embed_report.ipynb` and

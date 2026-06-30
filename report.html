@@ -56,7 +56,7 @@
 <body>
 <header>
   <h1>VaR Backtest Report</h1>
-  <div class="sub">Open <code>var_backtest_results.csv</code> to chart the rolling 99% VaR estimates and their trailing-year exceedance counts. Everything runs in your browser &mdash; no server.</div>
+  <div class="sub">Open <code>var_backtest_results.csv</code> to chart the rolling VaR estimates and their trailing-year exceedance counts. Everything runs in your browser &mdash; no server.</div>
 </header>
 
 <main>
@@ -78,7 +78,7 @@
     </div>
 
     <div class="chartwrap">
-      <h2>Rolling 99% Value at Risk (loss magnitude)</h2>
+      <h2>Rolling Value at Risk (loss magnitude)</h2>
       <svg id="varChart" viewBox="0 0 960 360" preserveAspectRatio="xMidYMid meet"></svg>
     </div>
     <div class="chartwrap">
@@ -94,24 +94,24 @@
   <details open class="defs">
     <summary>Metric definitions</summary>
     <dl>
-      <dt>Parametric</dt><dd>Equal-weight standard deviation, scaled to VaR with the 99% Normal z-score.</dd>
-      <dt>Historical</dt><dd>Empirical worst 1% of returns over the window (equal-weight historical simulation).</dd>
-      <dt>Expected Shortfall (ES)</dt><dd>Mean of the worst 2.55% of returns (97.45% expected shortfall = 99% Normal VaR).</dd>
-      <dt>EWMA</dt><dd>One-year half-life weighted standard deviation, scaled by the 99% Normal z-score.</dd>
-      <dt>BRW</dt><dd>Boudoukh&ndash;Richardson&ndash;Whitelaw: half-life weighted worst 1% quantile (weighted historical simulation).</dd>
-      <dt>BRW-ES</dt><dd>Half-life weighted mean of the worst 2.55% of returns (weighted expected shortfall).</dd>
+      <dt>SD-Scaled</dt><dd>Equal-weight standard deviation, scaled to VaR with the Normal z-score.</dd>
+      <dt>Historical</dt><dd>Empirical worst-tail return over the window.</dd>
+      <dt>ES-Equiv-Historical</dt><dd>Mean of the worst-tail returns, at the shortfall level that equals the Normal VaR.</dd>
+      <dt>EW-SD-Scaled</dt><dd>Exponentially weighted standard deviation, scaled to VaR with the Normal z-score.</dd>
+      <dt>EW-Historical</dt><dd>Exponentially weighted empirical worst-tail return over the window.</dd>
+      <dt>EW-ES-Equiv-Historical</dt><dd>Exponentially weighted mean of the worst-tail returns, at the shortfall level that equals the Normal VaR.</dd>
     </dl>
   </details>
-  Dotted line = current methodology (<code>hist_3y</code>) when present. VaR shown as a positive loss
-  (e.g. 2.33%); exceedance count = days in the trailing year whose realised loss exceeded the VaR.
+  The suffix on each series name is <code>(window, threshold)</code>, e.g. <code>(3y, 97.45)</code>.
+  Dotted line = current methodology (<code>Historical</code>) when present. VaR is shown as a positive
+  loss; exceedance count = days in the trailing year whose realised loss exceeded the VaR.
 </footer>
 
 <script>
 "use strict";
 const SVGNS = "http://www.w3.org/2000/svg";
 const PALETTE = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#17becf","#bcbd22"];
-const CURRENT_KEY = "hist_3y";          // dotted "current methodology" series
-const TOKEN = { param:"Parametric", hist:"Historical", es:"ES", ewma:"EWMA", brw:"BRW" };
+const CURRENT_NAME = "Historical";      // this metric is drawn dotted (current methodology)
 
 let DATA = null;   // { dates:[], metrics:[{key,label,color,dashed,var:[],exc:[]}] }
 
@@ -133,11 +133,12 @@ function parseCSV(text){
 }
 
 function prettyLabel(key){
+  // Columns are var_<name>_<window>_<percentile>, e.g. "ES-Equiv-Historical_3y_97.45".
+  // The name carries no underscores, so the rest is window + threshold.
   const parts = key.split("_");
-  let year = "";
-  if(/^\d+y$/.test(parts[parts.length-1])) year = parts.pop();
-  const name = parts.map(p => TOKEN[p] || p.toUpperCase()).join(" ");
-  return year ? `${name} (${year})` : name;
+  const name = parts[0];
+  const detail = parts.slice(1).join(", ");   // e.g. "3y, 97.45"
+  return detail ? `${name} (${detail})` : name;
 }
 
 function buildModel(parsed){
@@ -149,7 +150,7 @@ function buildModel(parsed){
     if(!col.startsWith("var_")) return;
     const key = col.slice(4);
     const excCol = "exc_" + key;
-    const dashed = (key === CURRENT_KEY);
+    const dashed = (key.split("_")[0] === CURRENT_NAME);
     const color = dashed ? "#111827" : PALETTE[ci++ % PALETTE.length];
     metrics.push({
       key, label: prettyLabel(key), color, dashed,
