@@ -26,6 +26,8 @@ The six metrics:
     (6) EW-ES-Equiv-Historical  - half-life weighted mean of the worst-tail returns
 """
 
+from __future__ import annotations   # lazy annotations: allow "float | None" on Python < 3.10
+
 from pathlib import Path
 
 import pandas as pd
