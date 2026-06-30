@@ -11,8 +11,9 @@ each method is calibrated.
    to `returns.xlsx` (one sheet, columns `Return_Date` and `Return_Value`).
 
 2. **`var_backtest.py`** reads that file and adds, for every day, six rolling
-   estimates of 99% VaR plus a trailing-year exceedance count for each. Results
-   are written to `var_backtest_results.csv`.
+   VaR estimates plus a trailing-year exceedance count for each, then writes
+   `var_backtest_results.csv`. It's a thin driver: the VaR/exceedance engine
+   lives in **`varlib.py`** (imported as `vl`), which it calls for every metric.
 
 ## VaR methods
 
@@ -21,9 +22,10 @@ loss). Each estimate is a **beginning-of-day** figure: the trailing window for
 day *t* ends on day *t-1*, so a day's return is never used in its own estimate
 and can serve as an out-of-sample test.
 
-Result columns are named `var_<name>_<window>_<percentile>` (e.g.
-`var_ES-Equiv-Historical_3y_97.45`), so each series carries its own window and
-VaR threshold.
+Result columns are named `var_<name>_<window>_<percentile>[_hl<half_life>y]`, so
+each series carries its own window, VaR threshold, and (for the exponentially
+weighted methods) half-life — e.g. `var_ES-Equiv-Historical_3y_97.45` or
+`var_EW-Historical_3y_99_hl1y`.
 
 | Name | Method | Window |
 | --- | --- | --- |
@@ -53,8 +55,10 @@ a tail probability of `1 - var_percentile`; the std-dev methods scale by
   call site.
 - The half-life weighting uses the same `0.5 ** (age / half_life)` convention as
   pandas' `ewm(halflife=)`.
-- The two core functions are `rolling_var()` (dispatches the six methods) and
-  `weighted_quantile()` (the weighted-quantile helper behind both BRW methods).
+- The engine lives in `varlib.py`: `rolling_var()` (dispatches the six methods),
+  `weighted_quantile()` and `weighted_expected_shortfall()` (the weighted-tail
+  helpers behind the EW methods), and `rolling_exceedance_count()`.
+  `var_backtest.py` just configures the metric list and calls them.
 
 ## Running it
 

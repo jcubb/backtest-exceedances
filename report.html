@@ -102,9 +102,10 @@
       <dt>EW-ES-Equiv-Historical</dt><dd>Exponentially weighted mean of the worst-tail returns, at the shortfall level that equals the Normal VaR.</dd>
     </dl>
   </details>
-  The suffix on each series name is <code>(window, threshold)</code>, e.g. <code>(3y, 97.45)</code>.
-  Dotted line = current methodology (<code>Historical</code>) when present. VaR is shown as a positive
-  loss; exceedance count = days in the trailing year whose realised loss exceeded the VaR.
+  The suffix on each series name is <code>(window, threshold)</code> &mdash; plus the half-life for the
+  exponentially weighted metrics, e.g. <code>(3y, 99, hl1y)</code> = 3-year window, 99 threshold,
+  1-year half-life. Dotted line = current methodology (<code>Historical</code>) when present. VaR is
+  shown as a positive loss; exceedance count = days in the trailing year whose realised loss exceeded the VaR.
 </footer>
 
 <script>

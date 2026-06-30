@@ -13,10 +13,15 @@ estimation methods, not a production risk system.
 - `generate_data.py` — simulates 10yr of weekday returns, N(0, 0.01), seeded
   (`RANDOM_SEED = 42`), writes `returns.xlsx` (sheet "Returns", columns
   `Return_Date`, `Return_Value`).
-- `var_backtest.py` — reads the xlsx, computes the six VaR columns and six
-  exceedance-count columns, writes `var_backtest_results.csv`.
+- `varlib.py` — the **VaR engine** (imported as `vl`): `rolling_var`,
+  `weighted_quantile`, `weighted_expected_shortfall`, `half_life_weights`,
+  `_window_var`, `rolling_exceedance_count`, and the `TRADING_DAYS_PER_YEAR` /
+  `EXCEEDANCE_WINDOW_YEARS` constants. No I/O, no `main`.
+- `var_backtest.py` — thin **driver**: reads the xlsx, holds the `metrics` config
+  table, calls `vl.rolling_var` / `vl.rolling_exceedance_count` per metric, writes
+  `var_backtest_results.csv`.
 - `returns.xlsx`, `var_backtest_results.csv` — generated outputs, git-ignored
-  (reproducible from the two scripts).
+  (reproducible from the scripts).
 
 ## Conventions (keep these consistent)
 - **VaR sign:** positive loss magnitude (e.g. `0.0233` = a 2.33% loss).
@@ -38,7 +43,7 @@ estimation methods, not a production risk system.
   the ES methods are called with `var_percentile = 0.9745` (→ worst 2.55% tail).
   The plain VaR methods are called with `0.99`.
 
-## The six VaR methods (`_window_var`)
+## The six VaR methods (`varlib._window_var`)
 | method key (dispatch) | display name | idea |
 | --- | --- | --- |
 | `parametric` | `SD-Scaled` | std × z (`norm.ppf(var_percentile)`) |
@@ -48,15 +53,20 @@ estimation methods, not a production risk system.
 | `brw` | `EW-Historical` | half-life weighted worst-tail quantile (BRW) |
 | `brw_es` | `EW-ES-Equiv-Historical` | half-life weighted mean of worst-tail (BRW-ES) |
 
-`main()` holds a `metrics` list of `(display name, method key, var_percentile)`
-and builds columns as **`var_<name>_<years>y_<pct>`** — e.g.
-`var_ES-Equiv-Historical_3y_97.45`. The display names carry no underscores, so
-`report.html` can split on `_` into name / window / threshold. The internal
-`_window_var` dispatch keys (`parametric`, `historical`, …) are unchanged; only
-the column-name labels and report display changed (renamed 2026-06-30).
+`var_backtest.py:main()` holds a `metrics` list of
+`(display name, method key, var_percentile, half_life_years)` (half-life is
+`None` for the equal-weight methods) and builds columns as
+**`var_<name>_<years>y_<pct>[_hl<hl>y]`** — e.g. `var_ES-Equiv-Historical_3y_97.45`
+or `var_EW-Historical_3y_99_hl1y`. The display names carry no underscores, so
+`report.html` splits on `_` into name / window / threshold / half-life and labels
+each series accordingly. The `varlib._window_var` dispatch keys (`parametric`,
+`historical`, …) are unchanged; the column-name labels + report display were
+renamed and the engine moved to `varlib.py` (2026-06-30).
 
 The example `main()` runs all six on a **3-year** window at 0.99 (VaR methods) or
-0.9745 (ES methods). Changing `years` flows into the column names automatically.
+0.9745 (ES methods), EW methods at a 1-year half-life. Add rows to `metrics` to
+compare, e.g. EW metrics at different half-lives — each gets its own column and
+series. Changing `years` flows into the column names automatically.
 
 ## Exceedance counts (`rolling_exceedance_count`)
 For each VaR column, the count of days in the trailing 252 days **inclusive of
@@ -82,12 +92,15 @@ day-to-day, so they're a smoothed tally, not independent observations.
   prior wrinkle, now resolved.)
 
 ## How to extend
-- **Add a VaR method:** add a branch in `_window_var`, then one `results[...] =
-  rolling_var(...)` line in `main()` and append the column name to `var_columns`
-  (so it also gets an exceedance count).
-- **Add a weighted tail statistic:** reuse `weighted_quantile` (underpins `brw`)
-  or `weighted_expected_shortfall` (underpins `expected_shortfall` and `brw_es`,
-  with equal weights vs half-life weights respectively).
+- **Add a metric run:** append a row to the `metrics` table in
+  `var_backtest.py:main()` — `(name, method, percentile, half_life_years)`. The
+  loop builds its column (and exceedance count) automatically. Use this to
+  compare EW metrics at different half-lives or different windows/thresholds.
+- **Add a new VaR method:** add a branch in `varlib._window_var`, then reference
+  its key from a `metrics` row.
+- **Add a weighted tail statistic:** reuse `varlib.weighted_quantile` (underpins
+  `brw`) or `varlib.weighted_expected_shortfall` (underpins `expected_shortfall`
+  and `brw_es`, with equal vs half-life weights).
 
 ## Running
 ```bash
