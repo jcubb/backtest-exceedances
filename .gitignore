@@ -1,6 +1,7 @@
 # Generated data and results (reproducible via the scripts)
 returns.xlsx
 var_backtest_results.csv
+report_embedded.html
 
 # Python
 __pycache__/

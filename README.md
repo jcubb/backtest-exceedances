@@ -71,6 +71,11 @@ A `hist_3y` series, if present, is drawn as a dotted line (the current
 methodology); every other metric gets a solid line in a distinct color. Hovering
 shows the values for every selected metric on that date.
 
+To embed the report **inside a Jupyter notebook**, open `embed_report.ipynb` and
+run the cell (or copy it into your own notebook). It bakes the CSV into the page
+and displays it via an `IFrame` — a Markdown cell won't work, because Jupyter
+strips the report's `<script>` for security.
+
 ## License
 
 [MIT](LICENSE)
