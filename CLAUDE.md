@@ -37,31 +37,34 @@ estimation methods, not a production risk system.
   `equity_risklib.risk_model` convention used elsewhere in the user's code.
 - **Confidence level:** passed per call as `var_percentile` (one argument
   threaded `rolling_var` → `_window_var`); there are no `CONFIDENCE`/`Z_SCORE_99`/
-  `ES_TAIL_PROBABILITY` globals. Quantile methods use `1 - var_percentile`;
-  parametric methods scale by `norm.ppf(var_percentile)`, computed in-method.
+  `ES_TAIL_PROBABILITY` globals. Quantile methods use `1 - var_percentile`; the
+  std-dev methods (`SD-Scaled`, `EW-SD-Scaled`) scale by `norm.ppf(var_percentile)`.
 - **ES trick:** the 97.45% expected shortfall of a normal equals its 99% VaR, so
   the ES methods are called with `var_percentile = 0.9745` (→ worst 2.55% tail).
   The plain VaR methods are called with `0.99`.
 
 ## The six VaR methods (`varlib._window_var`)
-| method key (dispatch) | display name | idea |
-| --- | --- | --- |
-| `parametric` | `SD-Scaled` | std × z (`norm.ppf(var_percentile)`) |
-| `historical` | `Historical` | empirical worst-tail quantile |
-| `expected_shortfall` | `ES-Equiv-Historical` | mean of worst-tail (ES) |
-| `ewma` | `EW-SD-Scaled` | half-life weighted std × z (windowed `ewm`) |
-| `brw` | `EW-Historical` | half-life weighted worst-tail quantile (BRW) |
-| `brw_es` | `EW-ES-Equiv-Historical` | half-life weighted mean of worst-tail (BRW-ES) |
+The method name IS the dispatch key — there is no separate display name. The
+engine understands these strings directly:
+
+| method | idea |
+| --- | --- |
+| `SD-Scaled` | std × z (`norm.ppf(var_percentile)`) |
+| `Historical` | empirical worst-tail quantile |
+| `ES-Equiv-Historical` | mean of worst-tail (ES) |
+| `EW-SD-Scaled` | half-life weighted std × z (windowed `ewm`) |
+| `EW-Historical` | half-life weighted worst-tail quantile (BRW) |
+| `EW-ES-Equiv-Historical` | half-life weighted mean of worst-tail (BRW-ES) |
 
 `var_backtest.py:main()` holds a `metrics` list of
-`(display name, method key, var_percentile, half_life_years)` (half-life is
-`None` for the equal-weight methods) and builds columns as
-**`var_<name>_<years>y_<pct>[_hl<hl>y]`** — e.g. `var_ES-Equiv-Historical_3y_97.45`
-or `var_EW-Historical_3y_99_hl1y`. The display names carry no underscores, so
-`report.html` splits on `_` into name / window / threshold / half-life and labels
-each series accordingly. The `varlib._window_var` dispatch keys (`parametric`,
-`historical`, …) are unchanged; the column-name labels + report display were
-renamed and the engine moved to `varlib.py` (2026-06-30).
+`(method, var_percentile, half_life_years)` (half-life is `None` for the
+equal-weight methods) and builds columns as
+**`var_<method>_<years>y_<pct>[_hl<hl>y]`** — e.g. `var_ES-Equiv-Historical_3y_97.45`
+or `var_EW-Historical_3y_99_hl1y`. The method names carry no underscores, so
+`report.html` splits on `_` into method / window / threshold / half-life and
+labels each series accordingly. (Engine moved to `varlib.py` and methods renamed
+to these unified names 2026-06-30 — there is no longer a `parametric`/`brw`/etc.
+key.)
 
 The example `main()` runs all six on a **3-year** window at 0.99 (VaR methods) or
 0.9745 (ES methods), EW methods at a 1-year half-life. Add rows to `metrics` to
@@ -77,30 +80,31 @@ day-to-day, so they're a smoothed tally, not independent observations.
 
 ## Known wrinkles (quantile discreteness)
 - **Two different interpolation conventions.** The equal-weight methods
-  (`historical`, and the `expected_shortfall` threshold) use `np.quantile`'s
+  (`Historical`, and the `ES-Equiv-Historical` threshold) use `np.quantile`'s
   default linear/**R-7** estimator (virtual index `p·(n−1)`). The weighted
-  methods (`brw`, `brw_es`) use `weighted_quantile`, whose `cumsum(w) − 0.5·w`
-  plotting position reduces to the **Hazen (type-5)** position `(k+0.5)/n` when
-  weights are equal. So `historical` and `brw` do **not** numerically agree in
-  the equal-weight limit (they differ by ~½ a rank). This is a deliberate,
-  un-fixed inconsistency — left as-is on purpose; do not "harmonize" it without
-  asking.
-- **ES integrates to exact mass.** Both ES methods (`expected_shortfall`,
-  `brw_es`) go through `weighted_expected_shortfall`, which averages exactly the
+  methods (`EW-Historical`, `EW-ES-Equiv-Historical`) use `weighted_quantile`,
+  whose `cumsum(w) − 0.5·w` plotting position reduces to the **Hazen (type-5)**
+  position `(k+0.5)/n` when weights are equal. So `Historical` and `EW-Historical`
+  do **not** numerically agree in the equal-weight limit (they differ by ~½ a
+  rank). This is a deliberate, un-fixed inconsistency — left as-is on purpose; do
+  not "harmonize" it without asking.
+- **ES integrates to exact mass.** Both ES methods (`ES-Equiv-Historical`,
+  `EW-ES-Equiv-Historical`) go through `weighted_expected_shortfall`, which averages exactly the
   worst `tail_probability` of weight mass with a fractional boundary observation
   — so there is no whole-observation discreteness on the ES side. (This was a
   prior wrinkle, now resolved.)
 
 ## How to extend
 - **Add a metric run:** append a row to the `metrics` table in
-  `var_backtest.py:main()` — `(name, method, percentile, half_life_years)`. The
-  loop builds its column (and exceedance count) automatically. Use this to
-  compare EW metrics at different half-lives or different windows/thresholds.
-- **Add a new VaR method:** add a branch in `varlib._window_var`, then reference
-  its key from a `metrics` row.
+  `var_backtest.py:main()` — `(method, percentile, half_life_years)`. The loop
+  builds its column (and exceedance count) automatically. Use this to compare EW
+  methods at different half-lives or different windows/thresholds.
+- **Add a new VaR method:** add a branch in `varlib._window_var` keyed on the new
+  method name, then reference that name from a `metrics` row.
 - **Add a weighted tail statistic:** reuse `varlib.weighted_quantile` (underpins
-  `brw`) or `varlib.weighted_expected_shortfall` (underpins `expected_shortfall`
-  and `brw_es`, with equal vs half-life weights).
+  `EW-Historical`) or `varlib.weighted_expected_shortfall` (underpins
+  `ES-Equiv-Historical` and `EW-ES-Equiv-Historical`, with equal vs half-life
+  weights).
 
 ## Running
 ```bash

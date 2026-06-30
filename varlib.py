@@ -6,13 +6,13 @@ calls ``vl.rolling_var`` / ``vl.rolling_exceedance_count``.
 
 ``rolling_var`` supports six methods, selected by the ``method`` argument:
 
-    "parametric"          - trailing std dev, scaled by the normal z-score
-    "historical"          - empirical worst-tail return
-    "expected_shortfall"  - mean of the worst-tail returns (expected shortfall)
-    "ewma"                - half-life weighted std dev, scaled by the z-score
-    "brw"                 - half-life weighted worst-tail return
-                            (Boudoukh-Richardson-Whitelaw weighted-quantile)
-    "brw_es"              - half-life weighted mean of the worst-tail returns
+    "SD-Scaled"               - trailing std dev, scaled by the normal z-score
+    "Historical"              - empirical worst-tail return
+    "ES-Equiv-Historical"     - mean of the worst-tail returns (expected shortfall)
+    "EW-SD-Scaled"            - half-life weighted std dev, scaled by the z-score
+    "EW-Historical"           - half-life weighted worst-tail return
+                                (Boudoukh-Richardson-Whitelaw weighted-quantile)
+    "EW-ES-Equiv-Historical"  - half-life weighted mean of the worst-tail returns
 
 The confidence level is supplied per call via ``var_percentile`` (e.g. 0.99 for
 plain VaR; 0.9745 for the expected-shortfall methods, whose 97.45% tail mean
@@ -95,8 +95,8 @@ def rolling_var(
     returns : pd.Series
         Daily return series indexed by date.
     method : str
-        One of "parametric", "historical", "expected_shortfall", "ewma",
-        "brw", "brw_es".
+        One of "SD-Scaled", "Historical", "ES-Equiv-Historical", "EW-SD-Scaled",
+        "EW-Historical", "EW-ES-Equiv-Historical".
     var_percentile : float
         Confidence level of interest. Pass 0.99 for the plain VaR methods and
         0.9745 for the expected-shortfall methods (whose 97.45% tail mean equals
@@ -104,7 +104,8 @@ def rolling_var(
     years : int
         Length of the trailing window, in years (converted to trading days).
     half_life_years : float
-        Half-life for the weighted methods ("ewma", "brw", "brw_es"), in years.
+        Half-life for the EW methods ("EW-SD-Scaled", "EW-Historical",
+        "EW-ES-Equiv-Historical"), in years.
     """
     window_days = years * TRADING_DAYS_PER_YEAR
     half_life_days = half_life_years * TRADING_DAYS_PER_YEAR
@@ -131,23 +132,23 @@ def _window_var(
 
     ``var_percentile`` is the confidence level of interest: 0.99 for the plain
     VaR methods, 0.9745 for the expected-shortfall methods. Quantile-based
-    methods use a tail probability of ``1 - var_percentile``; the parametric
-    methods scale the std dev by ``norm.ppf(var_percentile)``.
+    methods use a tail probability of ``1 - var_percentile``; the std-dev methods
+    (``SD-Scaled``, ``EW-SD-Scaled``) scale by ``norm.ppf(var_percentile)``.
     """
     tail_probability = 1 - var_percentile
 
-    if method == "parametric":
+    if method == "SD-Scaled":
         return norm.ppf(var_percentile) * window.std(ddof=1)
 
-    if method == "historical":
+    if method == "Historical":
         return -np.quantile(window, tail_probability)
 
-    if method == "expected_shortfall":
+    if method == "ES-Equiv-Historical":
         equal_weights = np.ones(len(window))
         return weighted_expected_shortfall(window, equal_weights, tail_probability)
 
-    if method == "ewma":
-        # One-year half-life weighted std dev, matching the pandas ewm(halflife=)
+    if method == "EW-SD-Scaled":
+        # Half-life weighted std dev, matching the pandas ewm(halflife=)
         # convention used in equity_risklib, but restricted to this window.
         ewma_std = (
             pd.Series(window)
@@ -157,15 +158,14 @@ def _window_var(
         )
         return norm.ppf(var_percentile) * ewma_std
 
-    if method == "brw":
+    if method == "EW-Historical":
         weights = half_life_weights(len(window), half_life_days)
         return -weighted_quantile(window, weights, tail_probability)
 
-    if method == "brw_es":
-        # Expected-shortfall analogue of the BRW method: the half-life weighted
-        # average of the worst tail of returns (by weight mass). Pass 0.9745 so
-        # the worst 2.55% of mass are averaged, which equals the 99% VaR under
-        # normality. Integrates to exactly the tail mass (fractional boundary).
+    if method == "EW-ES-Equiv-Historical":
+        # Expected-shortfall analogue of EW-Historical: the half-life weighted
+        # mean of the worst tail of returns (by weight mass), integrating to
+        # exactly the tail mass with a fractional boundary observation.
         weights = half_life_weights(len(window), half_life_days)
         return weighted_expected_shortfall(window, weights, tail_probability)
 
