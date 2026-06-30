@@ -224,7 +224,16 @@ function renderChart(svg, field, fmt, zeroBased){
   const sc = niceScale(zeroBased ? 0 : dMin, dMax, 5);
   const ticks = sc.ticks;
 
-  const xOf = i => M.left + (n<=1 ? 0 : (i/(n-1))*PW);
+  // x-domain: first..last index with data (drops the leading warm-up NaNs so the
+  // series fill the full width).
+  let iMin = -1, iMax = -1;
+  for(let i=0;i<n;i++){
+    if(metrics.some(m => m[field][i] != null)){ if(iMin<0) iMin = i; iMax = i; }
+  }
+  if(iMin < 0){ iMin = 0; iMax = Math.max(0, n-1); }
+  const xSpan = Math.max(1, iMax - iMin);
+
+  const xOf = i => M.left + ((i - iMin)/xSpan)*PW;
   const yOf = v => M.top + PH - ((v - sc.lo)/(sc.hi - sc.lo))*PH;
 
   const grid = el("g", { class:"grid" });
@@ -240,7 +249,7 @@ function renderChart(svg, field, fmt, zeroBased){
   // x labels (evenly spaced)
   const xt = 7;
   for(let k=0;k<xt;k++){
-    const i = Math.round(k/(xt-1)*(n-1));
+    const i = Math.round(iMin + k/(xt-1)*(iMax - iMin));
     const x = xOf(i);
     const lab = el("text", { x:x, y:M.top+PH+18, "text-anchor":"middle" });
     lab.textContent = (DATA.dates[i]||"").slice(0,7);
@@ -265,11 +274,11 @@ function renderChart(svg, field, fmt, zeroBased){
     svg.appendChild(p);
   });
 
-  attachHover(svg, metrics, field, fmt, xOf, yOf, n);
+  attachHover(svg, metrics, field, fmt, xOf, yOf, iMin, iMax);
 }
 
 /* ---------- hover tooltip ---------- */
-function attachHover(svg, metrics, field, fmt, xOf, yOf, n){
+function attachHover(svg, metrics, field, fmt, xOf, yOf, iMin, iMax){
   const focus = el("g", { class:"focus" });
   const vline = el("line", { y1:M.top, y2:M.top+PH, stroke:"#9ca3af", "stroke-dasharray":"3 3",
                              opacity:0 });
@@ -290,8 +299,8 @@ function attachHover(svg, metrics, field, fmt, xOf, yOf, n){
   }
   function move(evt){
     const u = toUser(evt);
-    let i = Math.round((u.x - M.left)/PW*(n-1));
-    i = Math.max(0, Math.min(n-1, i));
+    let i = Math.round(iMin + (u.x - M.left)/PW*(iMax - iMin));
+    i = Math.max(iMin, Math.min(iMax, i));
     vline.setAttribute("x1", xOf(i)); vline.setAttribute("x2", xOf(i));
     vline.setAttribute("opacity", 1);
     let rows = `<div class="d">${DATA.dates[i]}</div>`;
