@@ -46,6 +46,11 @@
   .empty { color:var(--muted); font-size:13px; padding:30px; text-align:center; }
   footer { color:var(--muted); font-size:12px; padding:0 24px 24px; max-width:1100px; margin:0 auto; }
   code { background:#f3f4f6; padding:1px 5px; border-radius:4px; }
+  .defs { margin-bottom:12px; }
+  .defs summary { cursor:pointer; font-weight:600; color:var(--fg); font-size:13px; }
+  .defs dl { display:grid; grid-template-columns:max-content 1fr; gap:6px 16px; margin:12px 0 0; }
+  .defs dt { font-weight:600; color:#374151; white-space:nowrap; }
+  .defs dd { margin:0; }
 </style>
 </head>
 <body>
@@ -86,8 +91,19 @@
 <div id="tooltip"></div>
 
 <footer>
-  Dotted line = current methodology (<code>hist_3y</code>) when present. VaR shown as positive loss
-  (e.g. 2.33%). Generated as a standalone file; reload a new CSV anytime.
+  <details open class="defs">
+    <summary>Metric definitions</summary>
+    <dl>
+      <dt>Parametric</dt><dd>Equal-weight standard deviation, scaled to VaR with the 99% Normal z-score.</dd>
+      <dt>Historical</dt><dd>Empirical worst 1% of returns over the window (equal-weight historical simulation).</dd>
+      <dt>Expected Shortfall (ES)</dt><dd>Mean of the worst 2.55% of returns (97.45% expected shortfall = 99% Normal VaR).</dd>
+      <dt>EWMA</dt><dd>One-year half-life weighted standard deviation, scaled by the 99% Normal z-score.</dd>
+      <dt>BRW</dt><dd>Boudoukh&ndash;Richardson&ndash;Whitelaw: half-life weighted worst 1% quantile (weighted historical simulation).</dd>
+      <dt>BRW-ES</dt><dd>Half-life weighted mean of the worst 2.55% of returns (weighted expected shortfall).</dd>
+    </dl>
+  </details>
+  Dotted line = current methodology (<code>hist_3y</code>) when present. VaR shown as a positive loss
+  (e.g. 2.33%); exceedance count = days in the trailing year whose realised loss exceeded the VaR.
 </footer>
 
 <script>
