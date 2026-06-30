@@ -61,6 +61,16 @@ python var_backtest.py    # writes var_backtest_results.csv
 
 Requires `pandas`, `numpy`, `scipy`, and `openpyxl`.
 
+## Viewing the results
+
+`report.html` is a standalone, dependency-free report — no server, no build step.
+Open it in any browser, then load (or drag in) a `var_backtest_results.csv`. It
+detects which metrics are present, lets you toggle any subset on/off, and draws
+two charts: the rolling VaR estimates and the trailing-year exceedance counts.
+A `hist_3y` series, if present, is drawn as a dotted line (the current
+methodology); every other metric gets a solid line in a distinct color. Hovering
+shows the values for every selected metric on that date.
+
 ## License
 
 [MIT](LICENSE)

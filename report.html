@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VaR Backtest Report</title>
+<style>
+  :root { --fg:#1f2937; --muted:#6b7280; --line:#e5e7eb; --bg:#ffffff; --panel:#f9fafb; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+         color:var(--fg); background:var(--bg); }
+  header { padding:20px 24px 12px; border-bottom:1px solid var(--line); }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:13px; }
+  main { padding:20px 24px 48px; max-width:1100px; margin:0 auto; }
+  #drop { border:2px dashed #cbd5e1; border-radius:10px; padding:28px; text-align:center;
+          color:var(--muted); background:var(--panel); cursor:pointer; transition:.15s; }
+  #drop.hover { border-color:#3b82f6; background:#eff6ff; color:#1d4ed8; }
+  #drop input { display:none; }
+  .controls { margin:18px 0 8px; padding:14px 16px; background:var(--panel);
+              border:1px solid var(--line); border-radius:10px; }
+  .controls .row { display:flex; flex-wrap:wrap; gap:14px 20px; align-items:center; }
+  .metric { display:inline-flex; align-items:center; gap:8px; font-size:14px; cursor:pointer;
+            user-select:none; }
+  .metric input { cursor:pointer; }
+  .swatch { width:22px; height:0; border-top-width:3px; border-top-style:solid; display:inline-block; }
+  .tag { font-size:11px; color:#1d4ed8; background:#dbeafe; border-radius:4px; padding:1px 6px; }
+  .btns { margin-left:auto; display:flex; gap:8px; }
+  button.mini { font-size:12px; padding:4px 10px; border:1px solid #d1d5db; background:#fff;
+                border-radius:6px; cursor:pointer; color:var(--fg); }
+  button.mini:hover { background:#f3f4f6; }
+  .chartwrap { margin-top:22px; }
+  .chartwrap h2 { font-size:15px; margin:0 0 4px; }
+  svg { width:100%; height:auto; display:block; background:#fff; border:1px solid var(--line);
+        border-radius:8px; }
+  .axis text { fill:var(--muted); font-size:11px; }
+  .grid line { stroke:var(--line); }
+  .axis line, .axis path { stroke:#9ca3af; }
+  #tooltip { position:fixed; pointer-events:none; background:#111827; color:#f9fafb; font-size:12px;
+             padding:8px 10px; border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.18); opacity:0;
+             transition:opacity .08s; z-index:10; white-space:nowrap; }
+  #tooltip .d { color:#9ca3af; margin-bottom:4px; }
+  #tooltip .litem { display:flex; align-items:center; gap:6px; }
+  #tooltip .dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
+  .hidden { display:none; }
+  .empty { color:var(--muted); font-size:13px; padding:30px; text-align:center; }
+  footer { color:var(--muted); font-size:12px; padding:0 24px 24px; max-width:1100px; margin:0 auto; }
+  code { background:#f3f4f6; padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>VaR Backtest Report</h1>
+  <div class="sub">Open <code>var_backtest_results.csv</code> to chart the rolling 99% VaR estimates and their trailing-year exceedance counts. Everything runs in your browser &mdash; no server.</div>
+</header>
+
+<main>
+  <label id="drop">
+    <input type="file" id="file" accept=".csv,text/csv">
+    <div id="dropText"><strong>Click to choose</strong> or drag a <code>var_backtest_results.csv</code> file here</div>
+  </label>
+
+  <div id="report" class="hidden">
+    <div class="controls">
+      <div class="row" id="metricRow"></div>
+      <div class="row" style="margin-top:10px;">
+        <span class="sub" id="meta"></span>
+        <span class="btns">
+          <button class="mini" id="allBtn">Select all</button>
+          <button class="mini" id="noneBtn">Select none</button>
+        </span>
+      </div>
+    </div>
+
+    <div class="chartwrap">
+      <h2>Rolling 99% Value at Risk (loss magnitude)</h2>
+      <svg id="varChart" viewBox="0 0 960 360" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+    <div class="chartwrap">
+      <h2>Trailing 1-year exceedance counts</h2>
+      <svg id="excChart" viewBox="0 0 960 360" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+  </div>
+</main>
+
+<div id="tooltip"></div>
+
+<footer>
+  Dotted line = current methodology (<code>hist_3y</code>) when present. VaR shown as positive loss
+  (e.g. 2.33%). Generated as a standalone file; reload a new CSV anytime.
+</footer>
+
+<script>
+"use strict";
+const SVGNS = "http://www.w3.org/2000/svg";
+const PALETTE = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#17becf","#bcbd22"];
+const CURRENT_KEY = "hist_3y";          // dotted "current methodology" series
+const TOKEN = { param:"Parametric", hist:"Historical", es:"ES", ewma:"EWMA", brw:"BRW" };
+
+let DATA = null;   // { dates:[], metrics:[{key,label,color,dashed,var:[],exc:[]}] }
+
+/* ---------- CSV parsing ---------- */
+function parseCSV(text){
+  const lines = text.replace(/\r/g,"").split("\n").filter(l => l.length);
+  const header = lines[0].split(",");
+  const cols = {};
+  header.forEach(h => cols[h] = []);
+  for(let i=1;i<lines.length;i++){
+    const cells = lines[i].split(",");
+    for(let j=0;j<header.length;j++){
+      const raw = cells[j];
+      if(j===0){ cols[header[j]].push(raw); }
+      else { cols[header[j]].push(raw==="" ? null : parseFloat(raw)); }
+    }
+  }
+  return { header, cols };
+}
+
+function prettyLabel(key){
+  const parts = key.split("_");
+  let year = "";
+  if(/^\d+y$/.test(parts[parts.length-1])) year = parts.pop();
+  const name = parts.map(p => TOKEN[p] || p.toUpperCase()).join(" ");
+  return year ? `${name} (${year})` : name;
+}
+
+function buildModel(parsed){
+  const dateKey = parsed.header[0];
+  const dates = parsed.cols[dateKey];
+  const metrics = [];
+  let ci = 0;
+  parsed.header.forEach(col => {
+    if(!col.startsWith("var_")) return;
+    const key = col.slice(4);
+    const excCol = "exc_" + key;
+    const dashed = (key === CURRENT_KEY);
+    const color = dashed ? "#111827" : PALETTE[ci++ % PALETTE.length];
+    metrics.push({
+      key, label: prettyLabel(key), color, dashed,
+      var: parsed.cols[col],
+      exc: parsed.cols[excCol] || dates.map(()=>null),
+    });
+  });
+  return { dates, metrics };
+}
+
+/* ---------- controls ---------- */
+function buildControls(){
+  const row = document.getElementById("metricRow");
+  row.innerHTML = "";
+  DATA.metrics.forEach(m => {
+    const lab = document.createElement("label");
+    lab.className = "metric";
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = true; cb.dataset.key = m.key;
+    cb.addEventListener("change", render);
+    const sw = document.createElement("span");
+    sw.className = "swatch";
+    sw.style.borderTopColor = m.color;
+    sw.style.borderTopStyle = m.dashed ? "dotted" : "solid";
+    lab.appendChild(cb); lab.appendChild(sw);
+    lab.appendChild(document.createTextNode(m.label));
+    if(m.dashed){
+      const tag = document.createElement("span");
+      tag.className = "tag"; tag.textContent = "current";
+      lab.appendChild(tag);
+    }
+    row.appendChild(lab);
+  });
+  document.getElementById("allBtn").onclick = () => toggleAll(true);
+  document.getElementById("noneBtn").onclick = () => toggleAll(false);
+  const n = DATA.dates.length;
+  document.getElementById("meta").textContent =
+    `${n.toLocaleString()} rows · ${DATA.dates[0]} → ${DATA.dates[n-1]} · ${DATA.metrics.length} metrics`;
+}
+function toggleAll(state){
+  document.querySelectorAll('#metricRow input[type=checkbox]').forEach(cb => cb.checked = state);
+  render();
+}
+function selectedKeys(){
+  return new Set([...document.querySelectorAll('#metricRow input:checked')].map(cb => cb.dataset.key));
+}
+
+/* ---------- scales & ticks ---------- */
+function niceScale(lo, hi, count){
+  if(hi <= lo) hi = lo + 1;
+  const raw = (hi - lo) / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw / mag;
+  const step = (norm >= 5 ? 10 : norm >= 2 ? 5 : norm >= 1 ? 2 : 1) * mag;
+  const nlo = Math.floor(lo/step + 1e-9) * step;
+  const nhi = Math.ceil(hi/step - 1e-9) * step;
+  const ticks = [];
+  for(let v=nlo; v <= nhi + 1e-9; v += step) ticks.push(+v.toFixed(10));
+  return { lo:nlo, hi:nhi, ticks };
+}
+
+/* ---------- chart rendering ---------- */
+const M = { top:18, right:22, bottom:34, left:58 };
+const W = 960, H = 360, PW = W - M.left - M.right, PH = H - M.top - M.bottom;
+
+function el(tag, attrs){
+  const e = document.createElementNS(SVGNS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+function renderChart(svg, field, fmt, zeroBased){
+  svg.innerHTML = "";
+  const keys = selectedKeys();
+  const metrics = DATA.metrics.filter(m => keys.has(m.key));
+  const n = DATA.dates.length;
+
+  if(!metrics.length){
+    const t = el("text", { x:W/2, y:H/2, "text-anchor":"middle", fill:"#9ca3af" });
+    t.textContent = "Select at least one metric"; svg.appendChild(t); return;
+  }
+
+  let dMin = Infinity, dMax = -Infinity;
+  metrics.forEach(m => m[field].forEach(v => {
+    if(v!=null){ if(v<dMin) dMin=v; if(v>dMax) dMax=v; }
+  }));
+  if(dMax === -Infinity){ dMin = 0; dMax = 1; }       // no data yet
+  const sc = niceScale(zeroBased ? 0 : dMin, dMax, 5);
+  const ticks = sc.ticks;
+
+  const xOf = i => M.left + (n<=1 ? 0 : (i/(n-1))*PW);
+  const yOf = v => M.top + PH - ((v - sc.lo)/(sc.hi - sc.lo))*PH;
+
+  const grid = el("g", { class:"grid" });
+  const axis = el("g", { class:"axis" });
+
+  // y grid + labels
+  ticks.forEach(t => {
+    const y = yOf(t);
+    grid.appendChild(el("line", { x1:M.left, y1:y, x2:M.left+PW, y2:y }));
+    const lab = el("text", { x:M.left-8, y:y+3, "text-anchor":"end" });
+    lab.textContent = fmt(t); axis.appendChild(lab);
+  });
+  // x labels (evenly spaced)
+  const xt = 7;
+  for(let k=0;k<xt;k++){
+    const i = Math.round(k/(xt-1)*(n-1));
+    const x = xOf(i);
+    const lab = el("text", { x:x, y:M.top+PH+18, "text-anchor":"middle" });
+    lab.textContent = (DATA.dates[i]||"").slice(0,7);
+    axis.appendChild(lab);
+  }
+  axis.appendChild(el("line", { x1:M.left, y1:M.top+PH, x2:M.left+PW, y2:M.top+PH }));
+  axis.appendChild(el("line", { x1:M.left, y1:M.top, x2:M.left, y2:M.top+PH }));
+  svg.appendChild(grid); svg.appendChild(axis);
+
+  // series paths (break at nulls)
+  metrics.forEach(m => {
+    let d = "", pen = false;
+    for(let i=0;i<n;i++){
+      const v = m[field][i];
+      if(v==null){ pen = false; continue; }
+      d += (pen ? "L" : "M") + xOf(i).toFixed(2) + " " + yOf(v).toFixed(2) + " ";
+      pen = true;
+    }
+    const p = el("path", { d, fill:"none", stroke:m.color, "stroke-width": m.dashed?2.4:1.6,
+                           "stroke-linejoin":"round" });
+    if(m.dashed) p.setAttribute("stroke-dasharray","2 4");
+    svg.appendChild(p);
+  });
+
+  attachHover(svg, metrics, field, fmt, xOf, yOf, n);
+}
+
+/* ---------- hover tooltip ---------- */
+function attachHover(svg, metrics, field, fmt, xOf, yOf, n){
+  const focus = el("g", { class:"focus" });
+  const vline = el("line", { y1:M.top, y2:M.top+PH, stroke:"#9ca3af", "stroke-dasharray":"3 3",
+                             opacity:0 });
+  focus.appendChild(vline);
+  const dots = metrics.map(() => {
+    const c = el("circle", { r:3.5, fill:"#fff", "stroke-width":2, opacity:0 });
+    focus.appendChild(c); return c;
+  });
+  svg.appendChild(focus);
+  const tip = document.getElementById("tooltip");
+
+  const overlay = el("rect", { x:M.left, y:M.top, width:PW, height:PH, fill:"transparent" });
+  svg.appendChild(overlay);
+
+  function toUser(evt){
+    const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+  function move(evt){
+    const u = toUser(evt);
+    let i = Math.round((u.x - M.left)/PW*(n-1));
+    i = Math.max(0, Math.min(n-1, i));
+    vline.setAttribute("x1", xOf(i)); vline.setAttribute("x2", xOf(i));
+    vline.setAttribute("opacity", 1);
+    let rows = `<div class="d">${DATA.dates[i]}</div>`;
+    metrics.forEach((m, k) => {
+      const v = m[field][i];
+      if(v==null){ dots[k].setAttribute("opacity",0); return; }
+      dots[k].setAttribute("cx", xOf(i)); dots[k].setAttribute("cy", yOf(v));
+      dots[k].setAttribute("stroke", m.color); dots[k].setAttribute("opacity",1);
+      rows += `<div class="litem"><span class="dot" style="background:${m.color}"></span>`
+            + `${m.label}: <strong>${fmt(v)}</strong></div>`;
+    });
+    tip.innerHTML = rows; tip.style.opacity = 1;
+    tip.style.left = (evt.clientX + 14) + "px";
+    tip.style.top  = (evt.clientY + 14) + "px";
+  }
+  function leave(){
+    vline.setAttribute("opacity",0); dots.forEach(d=>d.setAttribute("opacity",0));
+    tip.style.opacity = 0;
+  }
+  overlay.addEventListener("mousemove", move);
+  overlay.addEventListener("mouseleave", leave);
+}
+
+/* ---------- formatters & render ---------- */
+const fmtPct   = v => (v*100).toFixed(2) + "%";
+const fmtCount = v => (Math.abs(v - Math.round(v)) < 1e-9 ? v.toFixed(0) : v.toFixed(1));
+
+function render(){
+  renderChart(document.getElementById("varChart"), "var", fmtPct, false);
+  renderChart(document.getElementById("excChart"), "exc", fmtCount, true);
+}
+
+/* ---------- file loading ---------- */
+function loadText(text){
+  try{
+    DATA = buildModel(parseCSV(text));
+    if(!DATA.metrics.length){ alert("No var_* columns found in that CSV."); return; }
+    document.getElementById("report").classList.remove("hidden");
+    document.getElementById("dropText").innerHTML =
+      "<strong>Loaded.</strong> Click to load a different CSV.";
+    buildControls(); render();
+  }catch(err){ alert("Could not parse CSV: " + err.message); }
+}
+function handleFile(file){
+  const r = new FileReader();
+  r.onload = e => loadText(e.target.result);
+  r.readAsText(file);
+}
+
+const drop = document.getElementById("drop");
+const fileInput = document.getElementById("file");
+fileInput.addEventListener("change", e => { if(e.target.files[0]) handleFile(e.target.files[0]); });
+["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.add("hover");
+}));
+["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.remove("hover");
+}));
+drop.addEventListener("drop", e => { if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+
+window.addEventListener("resize", () => { if(DATA) render(); });
+</script>
+</body>
+</html>
